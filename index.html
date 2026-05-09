@@ -23,8 +23,46 @@
 <div id="notif"></div>
 <div id="app"></div>
 <script>
-const SUPABASE_URL="https://nxvy1zycbankg3tapffwm.supabase.co";
-const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im54dml6eWNiYW5rZ2p0YXBmZndtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzMDU4MTcsImV4cCI6MjA5Mzg4MTgxN30.yum5S9yz8USsVSLR3XPsTHC8dcHDJjYQ66MEndkm0AQ";
+const URL="https://nxvy1zycbankg3tapffwm.supabase.co/rest/v1";
+const KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im54dml6eWNiYW5rZ2p0YXBmZndtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzMDU4MTcsImV4cCI6MjA5Mzg4MTgxN30.yum5S9yz8USsVSLR3XPsTHC8dcHDJjYQ66MEndkm0AQ";
+const H={"apikey":KEY,"Authorization":"Bearer "+KEY,"Content-Type":"application/json"};
+
+async function dbSelect(table){
+  const r=await fetch(`${URL}/${table}?select=*`,{headers:H});
+  return r.ok?await r.json():[];
+}
+async function dbInsert(table,data){
+  const r=await fetch(`${URL}/${table}`,{method:"POST",headers:{...H,"Prefer":"return=minimal"},body:JSON.stringify(data)});
+  return r.ok||r.status===201||r.status===204;
+}
+async function dbUpdate(table,filter,data){
+  const r=await fetch(`${URL}/${table}?${filter}`,{method:"PATCH",headers:{...H,"Prefer":"return=minimal"},body:JSON.stringify(data)});
+  return r.ok;
+}
+async function dbDelete(table,filter){
+  const r=await fetch(`${URL}/${table}?${filter}`,{method:"DELETE",headers:H});
+  return r.ok;
+}
+async function dbUpsert(table,data,onConflict){
+  // 먼저 존재하는지 확인 후 INSERT or UPDATE
+  if(table==="entries"){
+    const existing=await fetch(`${URL}/${table}?date_key=eq.${data.date_key}&entry_year=eq.${data.entry_year}`,{headers:H});
+    const rows=await existing.json();
+    if(rows.length>0){
+      return dbUpdate(table,`date_key=eq.${data.date_key}&entry_year=eq.${data.entry_year}`,{text:data.text,mood:data.mood,memo:data.memo});
+    }else{
+      return dbInsert(table,data);
+    }
+  }else{
+    const existing=await fetch(`${URL}/${table}?month_key=eq.${data.month_key}`,{headers:H});
+    const rows=await existing.json();
+    if(rows.length>0){
+      return dbUpdate(table,`month_key=eq.${data.month_key}`,{text:data.text});
+    }else{
+      return dbInsert(table,data);
+    }
+  }
+}
 
 const MONTHS=["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 const DAYS=["일","월","화","수","목","금","토"];
@@ -38,32 +76,13 @@ const THEMES={
 const today=new Date();
 let S={viewYear:today.getFullYear(),viewMonth:today.getMonth(),view:"calendar",selDate:null,entries:{},memos:{},theme:"cream",editEntry:null,editYear:today.getFullYear(),editMemo:"",confirmClear:false,loading:false};
 
-const sbReq=async(method,table,body=null,filter="")=>{
-  try{
-    const res=await fetch(`${SUPABASE_URL}/rest/v1/${table}${filter}`,{
-      method,
-      headers:{
-        "apikey":SUPABASE_KEY,
-        "Authorization":`Bearer ${SUPABASE_KEY}`,
-        "Content-Type":"application/json",
-        "Prefer":method==="POST"?"resolution=merge-duplicates,return=minimal":"return=minimal"
-      },
-      body:body?JSON.stringify(body):null
-    });
-    if(method==="GET")return await res.json();
-    return res.ok;
-  }catch(e){console.error(e);return method==="GET"?[]:false;}
-};
-const dbGet=t=>sbReq("GET",t,null,"?select=*");
-const dbUpsert=(t,d)=>sbReq("POST",t,d);
-const dbDelete=(t,f)=>sbReq("DELETE",t,null,f);
 const getTheme=()=>localStorage.getItem("diary-theme")||"cream";
 const setTheme=t=>localStorage.setItem("diary-theme",t);
 
 async function loadData(){
   S.loading=true;render();
   try{
-    const [er,mr]=await Promise.all([dbGet("entries"),dbGet("memos")]);
+    const [er,mr]=await Promise.all([dbSelect("entries"),dbSelect("memos")]);
     S.entries={};
     (Array.isArray(er)?er:[]).forEach(r=>{
       if(!S.entries[r.date_key])S.entries[r.date_key]=[];
@@ -257,7 +276,7 @@ function rDay(t){
           btn("수정",{style:`background:${t.soft};border-radius:8px;padding:4px 10px;font-size:12px;color:${t.accent}`},()=>{S.editYear=entry.year;S.editEntry={text:entry.text,mood:entry.mood,memo:entry.memo||""};render();}),
           btn("삭제",{style:"background:#fff0f0;border-radius:8px;padding:4px 10px;font-size:12px;color:#e57373"},async()=>{
             const k=dk(sd.year,sd.month,sd.day);
-            await dbDelete("entries",`?date_key=eq.${k}&entry_year=eq.${entry.year}`);
+            await dbDelete("entries",`date_key=eq.${k}&entry_year=eq.${entry.year}`);
             S.entries[k]=(S.entries[k]||[]).filter(e=>e.year!==entry.year);
             render();notify("삭제됐어요");
           })
@@ -290,8 +309,8 @@ function rSet(t){
     card.appendChild(div("display:flex;gap:8px",[
       btn("취소",{style:`flex:1;padding:10px;border-radius:10px;background:${t.soft};color:${t.sub};font-size:13px`},()=>{S.confirmClear=false;render();}),
       btn("정말 삭제",{style:"flex:1;padding:10px;border-radius:10px;background:#e57373;color:#fff;font-size:13px;font-weight:600"},async()=>{
-        await dbDelete("entries","?date_key=neq.null");
-        await dbDelete("memos","?month_key=neq.null");
+        await dbDelete("entries","date_key=neq.null");
+        await dbDelete("memos","month_key=neq.null");
         S.entries={};S.memos={};S.confirmClear=false;S.view="calendar";render();notify("🗑 모든 데이터 삭제됐어요.");
       })
     ]));
