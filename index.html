@@ -21,59 +21,51 @@
 <div id="notif"></div>
 <div id="app"></div>
 <script>
-// ── Supabase 설정 ──────────────────────────────
-const SB_URL = "https://nxvy1zycbankg3tapffwm.supabase.co/rest/v1";
-const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im54dml6eWNiYW5rZ2p0YXBmZndtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzMDU4MTcsImV4cCI6MjA5Mzg4MTgxN30.yum5S9yz8USsVSLR3XPsTHC8dcHDJjYQ66MEndkm0AQ";
+// ── Firebase 설정 ──────────────────────────────
+const FB_URL = "https://my-diary-40f53-default-rtdb.asia-southeast1.firebasedatabase.app";
 
-const SB_HEADERS = {
-  "Content-Type": "application/json",
-  "apikey": SB_KEY,
-  "Authorization": "Bearer " + SB_KEY
-};
-
-async function sbGet(table) {
+async function fbGet(path) {
   try {
-    const res = await fetch(SB_URL + "/" + table + "?select=*", { headers: SB_HEADERS });
-    if (!res.ok) { console.error("GET 실패", res.status, await res.text()); return []; }
+    const res = await fetch(`${FB_URL}/${path}.json`);
+    if (!res.ok) return null;
     return await res.json();
-  } catch(e) { console.error("GET 오류", e); return []; }
+  } catch(e) { return null; }
 }
 
-async function sbSave(table, data, conflict) {
+async function fbSet(path, data) {
   try {
-    const res = await fetch(SB_URL + "/" + table, {
-      method: "POST",
-      headers: { ...SB_HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal" },
+    const res = await fetch(`${FB_URL}/${path}.json`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
       body: JSON.stringify(data)
     });
-    console.log("SAVE 결과", res.status);
-    return res.ok || res.status === 201 || res.status === 204;
-  } catch(e) { console.error("SAVE 오류", e); return false; }
-}
-
-async function sbDelete(table, filter) {
-  try {
-    const res = await fetch(SB_URL + "/" + table + "?" + filter, { method: "DELETE", headers: SB_HEADERS });
     return res.ok;
   } catch(e) { return false; }
 }
 
-// ── 앱 데이터 ──────────────────────────────────
-const MONTHS = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
-const DAYS   = ["일","월","화","수","목","금","토"];
-const MOODS  = [{e:"😊",l:"좋음"},{e:"😐",l:"보통"},{e:"😔",l:"슬픔"},{e:"😤",l:"화남"},{e:"🥰",l:"행복"},{e:"😴",l:"피곤"},{e:"🤔",l:"복잡"},{e:"✨",l:"설렘"}];
-const THEMES = {
-  cream:    {bg:"#faf7f2",card:"#fff9f0",accent:"#c8956c",soft:"#f0ddd0",text:"#3d2b1f",sub:"#9a7b6a",border:"#e8d8cc",name:"크림"},
-  midnight: {bg:"#0f1117",card:"#1a1d27",accent:"#7c6af7",soft:"#2d2850",text:"#e8e4f0",sub:"#8b85a8",border:"#2a2d3e",name:"미드나잇"},
-  sage:     {bg:"#f2f5f0",card:"#ffffff",accent:"#5a7a5c",soft:"#d4e4d4",text:"#2c3e2d",sub:"#6b836c",border:"#c8dac8",name:"세이지"},
-  rose:     {bg:"#fff5f7",card:"#fff0f3",accent:"#d4607a",soft:"#ffd6e0",text:"#3d1a24",sub:"#a0566a",border:"#f0c4ce",name:"로즈"},
+async function fbDelete(path) {
+  try {
+    const res = await fetch(`${FB_URL}/${path}.json`, { method: "DELETE" });
+    return res.ok;
+  } catch(e) { return false; }
+}
+
+// ── 앱 설정 ───────────────────────────────────
+const MONTHS=["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+const DAYS=["일","월","화","수","목","금","토"];
+const MOODS=[{e:"😊",l:"좋음"},{e:"😐",l:"보통"},{e:"😔",l:"슬픔"},{e:"😤",l:"화남"},{e:"🥰",l:"행복"},{e:"😴",l:"피곤"},{e:"🤔",l:"복잡"},{e:"✨",l:"설렘"}];
+const THEMES={
+  cream:{bg:"#faf7f2",card:"#fff9f0",accent:"#c8956c",soft:"#f0ddd0",text:"#3d2b1f",sub:"#9a7b6a",border:"#e8d8cc",name:"크림"},
+  midnight:{bg:"#0f1117",card:"#1a1d27",accent:"#7c6af7",soft:"#2d2850",text:"#e8e4f0",sub:"#8b85a8",border:"#2a2d3e",name:"미드나잇"},
+  sage:{bg:"#f2f5f0",card:"#ffffff",accent:"#5a7a5c",soft:"#d4e4d4",text:"#2c3e2d",sub:"#6b836c",border:"#c8dac8",name:"세이지"},
+  rose:{bg:"#fff5f7",card:"#fff0f3",accent:"#d4607a",soft:"#ffd6e0",text:"#3d1a24",sub:"#a0566a",border:"#f0c4ce",name:"로즈"},
 };
 
 const today = new Date();
 let S = {
   viewYear: today.getFullYear(), viewMonth: today.getMonth(),
   view: "calendar", selDate: null,
-  entries: {}, memos: {}, theme: localStorage.getItem("diary-theme") || "cream",
+  entries: {}, memos: {}, theme: localStorage.getItem("diary-theme")||"cream",
   editEntry: null, editYear: today.getFullYear(), editMemo: "",
   confirmClear: false, loading: true
 };
@@ -81,26 +73,32 @@ let S = {
 // ── 데이터 로드 ────────────────────────────────
 async function loadData() {
   S.loading = true; render();
-  const [er, mr] = await Promise.all([sbGet("entries"), sbGet("memos")]);
-  S.entries = {};
-  er.forEach(r => {
-    if (!S.entries[r.date_key]) S.entries[r.date_key] = [];
-    S.entries[r.date_key].push({ year: r.entry_year, text: r.text, mood: r.mood, memo: r.memo });
-    S.entries[r.date_key].sort((a,b) => b.year - a.year);
-  });
-  S.memos = {};
-  mr.forEach(r => { S.memos[r.month_key] = r.text; });
+  const [entries, memos] = await Promise.all([
+    fbGet("entries"),
+    fbGet("memos")
+  ]);
+  S.entries = entries || {};
+  S.memos   = memos   || {};
   S.loading = false; render();
 }
 
 // ── 유틸 ──────────────────────────────────────
 const dk = (y,m,d) => `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 const mk = (y,m)   => `${y}-${String(m+1).padStart(2,'0')}`;
-const T  = ()      => THEMES[S.theme] || THEMES.cream;
+const T  = ()      => THEMES[S.theme]||THEMES.cream;
 const dIM = (y,m)  => new Date(y,m+1,0).getDate();
 const fD  = (y,m)  => new Date(y,m,1).getDay();
-const hasE = (y,m,d) => (S.entries[dk(y,m,d)] || []).length > 0;
-const dE   = () => S.selDate ? (S.entries[dk(S.selDate.year, S.selDate.month, S.selDate.day)] || []) : [];
+const hasE = (y,m,d) => {
+  const k = dk(y,m,d);
+  return S.entries[k] && Object.keys(S.entries[k]).length > 0;
+};
+const dE = () => {
+  if (!S.selDate) return [];
+  const k = dk(S.selDate.year, S.selDate.month, S.selDate.day);
+  const data = S.entries[k];
+  if (!data) return [];
+  return Object.values(data).sort((a,b) => b.year - a.year);
+};
 
 let nt = null;
 function notify(msg) {
@@ -109,13 +107,12 @@ function notify(msg) {
   if (nt) clearTimeout(nt);
   nt = setTimeout(() => { e.style.display = "none"; }, 2500);
 }
-
 function el(tag, attrs={}, text="") {
   const e = document.createElement(tag);
   Object.entries(attrs).forEach(([k,v]) => {
-    if (k === "class") e.className = v;
-    else if (["rows","type","id","placeholder","value","accept"].includes(k)) e[k] = v;
-    else e.setAttribute(k, v);
+    if (k==="class") e.className=v;
+    else if (["rows","type","id","placeholder","value","accept"].includes(k)) e[k]=v;
+    else e.setAttribute(k,v);
   });
   if (text) e.textContent = text;
   return e;
@@ -128,7 +125,7 @@ function btn(text, attrs={}, onClick) {
 }
 function div(style, children=[]) {
   const d = el("div", {style});
-  children.forEach(c => { if (c) d.appendChild(c); });
+  children.forEach(c => { if(c) d.appendChild(c); });
   return d;
 }
 
@@ -149,12 +146,10 @@ function render() {
   }
 
   const wrap = el("div", {style:"max-width:480px;margin:0 auto;padding-bottom:80px"});
-
-  // 헤더
   const title =
-    S.view === "calendar"  ? `${S.viewYear}년 ${S.viewMonth+1}월` :
-    S.view === "day" && S.selDate ? `${S.selDate.month+1}월 ${S.selDate.day}일` :
-    S.view === "month-memo" ? `${S.viewYear}년 ${S.viewMonth+1}월 한마디` : "설정";
+    S.view==="calendar" ? `${S.viewYear}년 ${S.viewMonth+1}월` :
+    S.view==="day"&&S.selDate ? `${S.selDate.month+1}월 ${S.selDate.day}일` :
+    S.view==="month-memo" ? `${S.viewYear}년 ${S.viewMonth+1}월 한마디` : "설정";
 
   wrap.appendChild(div("padding:26px 18px 12px;display:flex;align-items:flex-start;justify-content:space-between", [
     div("", [
@@ -164,18 +159,16 @@ function render() {
     btn("⚙️", {style:`background:${t.soft};border-radius:50%;width:42px;height:42px;font-size:18px;display:flex;align-items:center;justify-content:center;margin-top:4px`}, () => { S.view="settings"; render(); })
   ]));
 
-  if (S.view === "calendar")   wrap.appendChild(renderCalendar(t));
-  if (S.view === "month-memo") wrap.appendChild(renderMonthMemo(t));
-  if (S.view === "day")        wrap.appendChild(renderDay(t));
-  if (S.view === "settings")   wrap.appendChild(renderSettings(t));
+  if (S.view==="calendar")   wrap.appendChild(rCal(t));
+  if (S.view==="month-memo") wrap.appendChild(rMemo(t));
+  if (S.view==="day")        wrap.appendChild(rDay(t));
+  if (S.view==="settings")   wrap.appendChild(rSet(t));
   app.appendChild(wrap);
 }
 
 // ── 달력 ──────────────────────────────────────
-function renderCalendar(t) {
+function rCal(t) {
   const wrap = el("div", {style:"padding:0 14px"});
-
-  // 월 네비
   wrap.appendChild(div(`display:flex;align-items:center;justify-content:space-between;background:${t.card};border-radius:18px;padding:12px 16px;margin-bottom:12px;box-shadow:0 2px 12px rgba(0,0,0,.06)`, [
     btn("‹", {style:`background:none;font-size:22px;color:${t.accent};padding:2px 8px`}, () => { if(S.viewMonth===0){S.viewMonth=11;S.viewYear--;}else S.viewMonth--; render(); }),
     div("text-align:center", [
@@ -189,16 +182,14 @@ function renderCalendar(t) {
     btn("›", {style:`background:none;font-size:22px;color:${t.accent};padding:2px 8px`}, () => { if(S.viewMonth===11){S.viewMonth=0;S.viewYear++;}else S.viewMonth++; render(); })
   ]));
 
-  // 이달의 한마디
   const cm = S.memos[mk(S.viewYear, S.viewMonth)] || "";
   const mb = div(`background:${t.card};border-radius:16px;padding:12px 18px;margin-bottom:12px;border:1px dashed ${t.border};cursor:pointer`, [
     el("div", {style:`font-size:10px;color:${t.sub};letter-spacing:1px;margin-bottom:3px`}, "이달의 한마디 ✏️"),
-    el("div", {style:`font-size:14px;color:${cm?t.text:t.sub};font-style:${cm?"normal":"italic"}`}, cm || "탭해서 이달의 기록을 남겨보세요...")
+    el("div", {style:`font-size:14px;color:${cm?t.text:t.sub};font-style:${cm?"normal":"italic"}`}, cm||"탭해서 이달의 기록을 남겨보세요...")
   ]);
-  mb.onclick = () => { S.editMemo = cm; S.view = "month-memo"; render(); };
+  mb.onclick = () => { S.editMemo=cm; S.view="month-memo"; render(); };
   wrap.appendChild(mb);
 
-  // 달력 그리드
   const grid = div(`background:${t.card};border-radius:20px;padding:14px 12px;box-shadow:0 2px 16px rgba(0,0,0,.07)`);
   const dh = div("display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:6px");
   DAYS.forEach((d,i) => dh.appendChild(el("div", {style:`text-align:center;font-size:11px;font-weight:500;padding:4px 0;color:${i===0?"#e57373":i===6?"#5a8fd4":t.sub}`}, d)));
@@ -209,12 +200,12 @@ function renderCalendar(t) {
   const dm = dIM(S.viewYear, S.viewMonth);
   for (let i=0; i<fd; i++) cells.appendChild(el("div"));
   for (let d=1; d<=dm; d++) {
-    const isT = d===today.getDate() && S.viewMonth===today.getMonth() && S.viewYear===today.getFullYear();
+    const isT = d===today.getDate()&&S.viewMonth===today.getMonth()&&S.viewYear===today.getFullYear();
     const hD  = hasE(S.viewYear, S.viewMonth, d);
     const dow = (fd+d-1)%7;
     const cell = el("div", {class:"dc", style:`aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${isT?t.accent:"transparent"}`});
-    cell.addEventListener("mouseover", () => { if(!isT) cell.style.background = t.soft; });
-    cell.addEventListener("mouseout",  () => { if(!isT) cell.style.background = "transparent"; });
+    cell.addEventListener("mouseover", () => { if(!isT) cell.style.background=t.soft; });
+    cell.addEventListener("mouseout",  () => { if(!isT) cell.style.background="transparent"; });
     cell.appendChild(el("span", {style:`font-size:14px;font-weight:${isT?600:400};color:${isT?"#fff":dow===0?"#e57373":dow===6?"#5a8fd4":t.text}`}, String(d)));
     if (hD) cell.appendChild(el("div", {style:`width:4px;height:4px;border-radius:50%;margin-top:1px;background:${isT?"rgba(255,255,255,.8)":t.accent}`}));
     cell.onclick = () => { S.selDate={year:S.viewYear,month:S.viewMonth,day:d}; S.editEntry=null; S.editYear=today.getFullYear(); S.view="day"; render(); };
@@ -231,7 +222,7 @@ function renderCalendar(t) {
 }
 
 // ── 이달의 한마디 ──────────────────────────────
-function renderMonthMemo(t) {
+function rMemo(t) {
   const wrap = el("div", {style:"padding:0 14px"});
   wrap.appendChild(btn("← 달력으로", {style:`background:${t.soft};border-radius:10px;padding:8px 16px;color:${t.accent};font-size:13px;margin-bottom:14px`}, () => { S.view="calendar"; render(); }));
   const card = div(`background:${t.card};border-radius:20px;padding:22px;box-shadow:0 2px 16px rgba(0,0,0,.07)`);
@@ -244,7 +235,7 @@ function renderMonthMemo(t) {
     btn("취소", {style:`flex:1;padding:11px;border-radius:12px;border:1px solid ${t.border};background:none;color:${t.sub};font-size:14px`}, () => { S.view="calendar"; render(); }),
     btn("저장", {style:`flex:2;padding:11px;border-radius:12px;background:${t.accent};color:#fff;font-size:14px;font-weight:600`}, async () => {
       const k = mk(S.viewYear, S.viewMonth);
-      const ok = await sbSave("memos", {month_key:k, text:S.editMemo});
+      const ok = await fbSet(`memos/${k}`, S.editMemo);
       if (ok) { S.memos[k]=S.editMemo; S.view="calendar"; render(); notify("저장됐어요 ✓"); }
       else notify("❌ 저장 실패");
     })
@@ -254,7 +245,7 @@ function renderMonthMemo(t) {
 }
 
 // ── 일기 뷰 ───────────────────────────────────
-function renderDay(t) {
+function rDay(t) {
   const wrap = el("div", {style:"padding:0 14px"});
   wrap.appendChild(btn("← 달력으로", {style:`background:${t.soft};border-radius:10px;padding:8px 16px;color:${t.accent};font-size:13px;margin-bottom:14px`}, () => { S.view="calendar"; S.editEntry=null; render(); }));
 
@@ -267,13 +258,11 @@ function renderDay(t) {
   dt.appendChild(document.createTextNode(`${sd.month+1}월 ${sd.day}일 `));
   dt.appendChild(el("span", {style:`font-size:13px;color:${t.sub}`}, `${dow}요일`));
   dc.appendChild(dt);
-  dc.appendChild(el("div", {style:`font-size:12px;color:${t.sub};margin-top:2px`}, de.length>0 ? `${de.length}개의 연도 기록` : "아직 기록이 없어요"));
+  dc.appendChild(el("div", {style:`font-size:12px;color:${t.sub};margin-top:2px`}, de.length>0?`${de.length}개의 연도 기록`:"아직 기록이 없어요"));
   wrap.appendChild(dc);
 
   if (S.editEntry !== null) {
     const form = div(`background:${t.card};border-radius:20px;padding:20px;margin-bottom:14px;box-shadow:0 2px 16px rgba(0,0,0,.07)`);
-
-    // 연도
     form.appendChild(el("div", {style:`font-size:11px;color:${t.sub};margin-bottom:8px;letter-spacing:1px`}, "연도 선택"));
     const ys = div("display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px");
     for (let off=0; off<=5; off++) {
@@ -281,44 +270,35 @@ function renderDay(t) {
       ys.appendChild(btn(`${y}년`, {style:`padding:6px 13px;border-radius:20px;background:${S.editYear===y?t.accent:t.soft};color:${S.editYear===y?"#fff":t.accent};font-size:13px;font-weight:${S.editYear===y?600:400}`}, () => { S.editYear=y; render(); }));
     }
     form.appendChild(ys);
-
-    // 기분
     form.appendChild(el("div", {style:`font-size:11px;color:${t.sub};margin-bottom:8px;letter-spacing:1px`}, "기분"));
     const ms = div("display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px");
     MOODS.forEach(m => {
-      const sel = S.editEntry.mood === m.e;
-      ms.appendChild(btn(m.e, {title:m.l, style:`padding:6px 9px;border-radius:20px;border:${sel?`2px solid ${t.accent}`:`1px solid ${t.border}`};background:${sel?t.soft:"none"};font-size:18px`}, () => { S.editEntry.mood = sel?null:m.e; render(); }));
+      const sel = S.editEntry.mood===m.e;
+      ms.appendChild(btn(m.e, {title:m.l, style:`padding:6px 9px;border-radius:20px;border:${sel?`2px solid ${t.accent}`:`1px solid ${t.border}`};background:${sel?t.soft:"none"};font-size:18px`}, () => { S.editEntry.mood=sel?null:m.e; render(); }));
     });
     form.appendChild(ms);
-
-    // 텍스트
     const ta = el("textarea", {style:`width:100%;border:1px solid ${t.border};border-radius:14px;padding:14px;font-size:14px;background:${t.bg};color:${t.text};outline:none;line-height:1.8;margin-bottom:10px`, rows:6, placeholder:`${S.editYear}년 ${sd.month+1}월 ${sd.day}일의 기록...`});
     ta.value = S.editEntry.text;
     ta.oninput = e => S.editEntry.text = e.target.value;
     form.appendChild(ta);
-
-    // 한줄 메모
     const inp = el("input", {type:"text", style:`width:100%;border:1px solid ${t.border};border-radius:10px;padding:9px 14px;font-size:13px;background:${t.bg};color:${t.text};outline:none;margin-bottom:14px`, placeholder:"한줄 메모 (선택)"});
-    inp.value = S.editEntry.memo || "";
+    inp.value = S.editEntry.memo||"";
     inp.oninput = e => S.editEntry.memo = e.target.value;
     form.appendChild(inp);
-
     form.appendChild(div("display:flex;gap:10px", [
       btn("취소", {style:`flex:1;padding:11px;border-radius:12px;border:1px solid ${t.border};background:none;color:${t.sub};font-size:14px`}, () => { S.editEntry=null; render(); }),
       btn("저장", {style:`flex:2;padding:11px;border-radius:12px;background:${t.accent};color:#fff;font-size:14px;font-weight:600`}, async () => {
         const text = S.editEntry.text.trim();
-        if (!text) { notify("일기 내용을 입력해주세요"); return; }
+        if (!text) { notify("내용을 입력해주세요"); return; }
         const k = dk(sd.year, sd.month, sd.day);
-        const ok = await sbSave("entries", {date_key:k, entry_year:S.editYear, text, mood:S.editEntry.mood||null, memo:S.editEntry.memo||""});
+        const ok = await fbSet(`entries/${k}/${S.editYear}`, {
+          year: S.editYear, text, mood: S.editEntry.mood||null, memo: S.editEntry.memo||""
+        });
         if (ok) {
-          const ex  = S.entries[k] || [];
-          const idx = ex.findIndex(e => e.year === S.editYear);
-          const ne  = {year:S.editYear, text, mood:S.editEntry.mood||null, memo:S.editEntry.memo||""};
-          S.entries[k] = idx>=0 ? ex.map((e,i)=>i===idx?ne:e) : [...ex,ne].sort((a,b)=>b.year-a.year);
+          if (!S.entries[k]) S.entries[k] = {};
+          S.entries[k][S.editYear] = {year:S.editYear, text, mood:S.editEntry.mood||null, memo:S.editEntry.memo||""};
           S.editEntry = null; render(); notify("저장됐어요 ✓");
-        } else {
-          notify("❌ 저장 실패");
-        }
+        } else notify("❌ 저장 실패");
       })
     ]));
     wrap.appendChild(form);
@@ -339,8 +319,8 @@ function renderDay(t) {
           btn("수정", {style:`background:${t.soft};border-radius:8px;padding:4px 10px;font-size:12px;color:${t.accent}`}, () => { S.editYear=entry.year; S.editEntry={text:entry.text,mood:entry.mood,memo:entry.memo||""}; render(); }),
           btn("삭제", {style:"background:#fff0f0;border-radius:8px;padding:4px 10px;font-size:12px;color:#e57373"}, async () => {
             const k = dk(sd.year, sd.month, sd.day);
-            await sbDelete("entries", `date_key=eq.${k}&entry_year=eq.${entry.year}`);
-            S.entries[k] = (S.entries[k]||[]).filter(e=>e.year!==entry.year);
+            await fbDelete(`entries/${k}/${entry.year}`);
+            if (S.entries[k]) delete S.entries[k][entry.year];
             render(); notify("삭제됐어요");
           })
         ])
@@ -355,7 +335,7 @@ function renderDay(t) {
 }
 
 // ── 설정 ──────────────────────────────────────
-function renderSettings(t) {
+function rSet(t) {
   const wrap = el("div", {style:"padding:0 14px"});
   wrap.appendChild(btn("← 달력으로", {style:`background:${t.soft};border-radius:10px;padding:8px 16px;color:${t.accent};font-size:13px;margin-bottom:14px`}, () => { S.view="calendar"; S.confirmClear=false; render(); }));
   const card = div(`background:${t.card};border-radius:20px;padding:24px;box-shadow:0 2px 16px rgba(0,0,0,.07)`);
@@ -374,8 +354,8 @@ function renderSettings(t) {
     card.appendChild(div("display:flex;gap:8px", [
       btn("취소", {style:`flex:1;padding:10px;border-radius:10px;background:${t.soft};color:${t.sub};font-size:13px`}, () => { S.confirmClear=false; render(); }),
       btn("정말 삭제", {style:"flex:1;padding:10px;border-radius:10px;background:#e57373;color:#fff;font-size:13px;font-weight:600"}, async () => {
-        await sbDelete("entries","date_key=neq.null");
-        await sbDelete("memos","month_key=neq.null");
+        await fbDelete("entries");
+        await fbDelete("memos");
         S.entries={}; S.memos={}; S.confirmClear=false; S.view="calendar"; render(); notify("🗑 모든 데이터 삭제됐어요.");
       })
     ]));
@@ -386,7 +366,6 @@ function renderSettings(t) {
   return wrap;
 }
 
-// ── 시작 ──────────────────────────────────────
 loadData();
 </script>
 </body>
