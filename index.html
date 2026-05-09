@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>My Diary</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Noto Serif KR',Georgia,serif;min-height:100vh;transition:background .3s,color .3s;-webkit-tap-highlight-color:transparent}
+    textarea{resize:none;font-family:inherit}
+    input{font-family:inherit}
+    ::-webkit-scrollbar{width:4px}
+    ::-webkit-scrollbar-thumb{border-radius:4px}
+    .btn{cursor:pointer;border:none;font-family:inherit;transition:opacity .15s}
+    .btn:active{opacity:.6}
+    .dc{transition:all .12s ease;cursor:pointer;border-radius:12px}
+    .dc:active{transform:scale(0.95)}
+    @keyframes si{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+    #notif{position:fixed;top:18px;left:50%;transform:translateX(-50%);padding:10px 24px;border-radius:24px;font-size:14px;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.18);white-space:nowrap;display:none;animation:si .2s ease}
+  </style>
+</head>
+<body>
+<div id="notif"></div>
+<div id="app"></div>
+<script>
+const MONTHS=["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+const DAYS=["일","월","화","수","목","금","토"];
+const MOODS=[{e:"😊",l:"좋음"},{e:"😐",l:"보통"},{e:"😔",l:"슬픔"},{e:"😤",l:"화남"},{e:"🥰",l:"행복"},{e:"😴",l:"피곤"},{e:"🤔",l:"복잡"},{e:"✨",l:"설렘"}];
+const THEMES={
+  cream:{bg:"#faf7f2",card:"#fff9f0",accent:"#c8956c",soft:"#f0ddd0",text:"#3d2b1f",sub:"#9a7b6a",border:"#e8d8cc",name:"크림"},
+  midnight:{bg:"#0f1117",card:"#1a1d27",accent:"#7c6af7",soft:"#2d2850",text:"#e8e4f0",sub:"#8b85a8",border:"#2a2d3e",name:"미드나잇"},
+  sage:{bg:"#f2f5f0",card:"#ffffff",accent:"#5a7a5c",soft:"#d4e4d4",text:"#2c3e2d",sub:"#6b836c",border:"#c8dac8",name:"세이지"},
+  rose:{bg:"#fff5f7",card:"#fff0f3",accent:"#d4607a",soft:"#ffd6e0",text:"#3d1a24",sub:"#a0566a",border:"#f0c4ce",name:"로즈"},
+};
+const today=new Date();
+let S={
+  viewYear:today.getFullYear(),viewMonth:today.getMonth(),
+  view:"calendar",selDate:null,
+  entries:{},memos:{},theme:"cream",
+  editEntry:null,editYear:today.getFullYear(),editMemo:"",confirmClear:false,
+};
+
+function load(){
+  try{
+    const e=localStorage.getItem("diary-entries");
+    const m=localStorage.getItem("diary-memos");
+    const t=localStorage.getItem("diary-theme");
+    if(e)S.entries=JSON.parse(e);
+    if(m)S.memos=JSON.parse(m);
+    if(t)S.theme=t;
+  }catch(err){}
+}
+function save(){
+  try{
+    localStorage.setItem("diary-entries",JSON.stringify(S.entries));
+    localStorage.setItem("diary-memos",JSON.stringify(S.memos));
+    localStorage.setItem("diary-theme",S.theme);
+  }catch(err){}
+}
+
+const dk=(y,m,d)=>`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+const mk=(y,m)=>`${y}-${String(m+1).padStart(2,'0')}`;
+const T=()=>THEMES[S.theme]||THEMES.cream;
+const daysInMonth=(y,m)=>new Date(y,m+1,0).getDate();
+const firstDay=(y,m)=>new Date(y,m,1).getDay();
+const hasEntry=(y,m,d)=>(S.entries[dk(y,m,d)]||[]).length>0;
+const dayEntries=()=>S.selDate?(S.entries[dk(S.selDate.year,S.selDate.month,S.selDate.day)]||[]):[];
+
+let nt=null;
+function notify(msg){
+  const el=document.getElementById("notif");
+  el.textContent=msg;el.style.background=T().accent;el.style.color="#fff";el.style.display="block";
+  if(nt)clearTimeout(nt);
+  nt=setTimeout(()=>{el.style.display="none";},2500);
+}
+
+function el(tag,attrs={},text=""){
+  const e=document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v])=>{
+    if(k==="class")e.className=v;
+    else if(["rows","type","id","accept","placeholder","value"].includes(k))e[k]=v;
+    else e.setAttribute(k,v);
+  });
+  if(text)e.textContent=text;
+  return e;
+}
+function btn(text,attrs={},onClick){
+  const b=el("button",{...attrs,class:"btn"});
+  b.textContent=text;
+  if(onClick)b.onclick=onClick;
+  return b;
+}
+function div(style,children=[]){
+  const d=el("div",{style});
+  children.forEach(c=>{if(c)d.appendChild(c);});
+  return d;
+}
+
+function render(){
+  const t=T();
+  document.body.style.background=t.bg;
+  document.body.style.color=t.text;
+  const app=document.getElementById("app");
+  app.innerHTML="";
+  const wrap=el("div",{style:"max-width:480px;margin:0 auto;padding-bottom:80px"});
+
+  // Header
+  const hdr=div("padding:26px 18px 12px;display:flex;align-items:flex-start;justify-content:space-between",[
+    div("",[
+      el("div",{style:`font-size:10px;letter-spacing:3px;color:${t.sub};text-transform:uppercase;margin-bottom:3px`},"My Diary"),
+      el("h1",{style:"font-size:23px;font-weight:600"},
+        S.view==="calendar"?`${S.viewYear}년 ${S.viewMonth+1}월`:
+        S.view==="day"&&S.selDate?`${S.selDate.month+1}월 ${S.selDate.day}일`:
+        S.view==="month-memo"?`${S.viewYear}년 ${S.viewMonth+1}월 한마디`:"설정"
+      )
+    ]),
+    btn("⚙️",{style:`background:${t.soft};border-radius:50%;width:42px;height:42px;font-size:18px;display:flex;align-items:center;justify-content:center;margin-top:4px`},()=>{S.view="settings";S.confirmClear=false;render();})
+  ]);
+  wrap.appendChild(hdr);
+
+  if(S.view==="calendar") wrap.appendChild(renderCalendar(t));
+  if(S.view==="month-memo") wrap.appendChild(renderMonthMemo(t));
+  if(S.view==="day") wrap.appendChild(renderDay(t));
+  if(S.view==="settings") wrap.appendChild(renderSettings(t));
+  app.appendChild(wrap);
+}
+
+function renderCalendar(t){
+  const wrap=el("div",{style:"padding:0 14px"});
+
+  // Month nav
+  const nav=div(`display:flex;align-items:center;justify-content:space-between;background:${t.card};border-radius:18px;padding:12px 16px;margin-bottom:12px;box-shadow:0 2px 12px rgba(0,0,0,.06)`,[
+    btn("‹",{style:`background:none;font-size:22px;color:${t.accent};padding:2px 8px`},()=>{
+      if(S.viewMonth===0){S.viewMonth=11;S.viewYear--;}else S.viewMonth--;render();
+    }),
+    div("text-align:center",[
+      el("div",{style:"font-size:17px;font-weight:600"},MONTHS[S.viewMonth]),
+      div("display:flex;gap:12px;justify-content:center;margin-top:3px",[
+        btn(String(S.viewYear-1),{style:`background:none;font-size:11px;color:${t.sub}`},()=>{S.viewYear--;render();}),
+        el("span",{style:`font-size:12px;font-weight:600;color:${t.accent}`},String(S.viewYear)),
+        btn(String(S.viewYear+1),{style:`background:none;font-size:11px;color:${t.sub}`},()=>{S.viewYear++;render();})
+      ])
+    ]),
+    btn("›",{style:`background:none;font-size:22px;color:${t.accent};padding:2px 8px`},()=>{
+      if(S.viewMonth===11){S.viewMonth=0;S.viewYear++;}else S.viewMonth++;render();
+    })
+  ]);
+  wrap.appendChild(nav);
+
+  // Month memo
+  const curMemo=S.memos[mk(S.viewYear,S.viewMonth)]||"";
+  const memoBox=div(`background:${t.card};border-radius:16px;padding:12px 18px;margin-bottom:12px;border:1px dashed ${t.border};cursor:pointer`,[
+    el("div",{style:`font-size:10px;color:${t.sub};letter-spacing:1px;margin-bottom:3px`},"이달의 한마디 ✏️"),
+    el("div",{style:`font-size:14px;color:${curMemo?t.text:t.sub};font-style:${curMemo?"normal":"italic"}`},curMemo||"탭해서 이달의 기록을 남겨보세요...")
+  ]);
+  memoBox.onclick=()=>{S.editMemo=curMemo;S.view="month-memo";render();};
+  wrap.appendChild(memoBox);
+
+  // Grid
+  const grid=div(`background:${t.card};border-radius:20px;padding:14px 12px;box-shadow:0 2px 16px rgba(0,0,0,.07)`);
+  const dayHdr=div("display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:6px");
+  DAYS.forEach((d,i)=>{
+    dayHdr.appendChild(el("div",{style:`text-align:center;font-size:11px;font-weight:500;padding:4px 0;color:${i===0?"#e57373":i===6?"#5a8fd4":t.sub};letter-spacing:1px`},d));
+  });
+  grid.appendChild(dayHdr);
+
+  const cells=div("display:grid;grid-template-columns:repeat(7,1fr);gap:3px");
+  const fd=firstDay(S.viewYear,S.viewMonth);
+  const dm=daysInMonth(S.viewYear,S.viewMonth);
+  for(let i=0;i<fd;i++)cells.appendChild(el("div"));
+  for(let d=1;d<=dm;d++){
+    const isToday=d===today.getDate()&&S.viewMonth===today.getMonth()&&S.viewYear===today.getFullYear();
+    const hasDiary=hasEntry(S.viewYear,S.viewMonth,d);
+    const dow=(fd+d-1)%7;
+    const cell=el("div",{class:"dc",style:`aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${isToday?t.accent:"transparent"}`});
+    cell.addEventListener("mouseover",()=>{if(!isToday)cell.style.background=t.soft;});
+    cell.addEventListener("mouseout",()=>{if(!isToday)cell.style.background="transparent";});
+    cell.appendChild(el("span",{style:`font-size:14px;font-weight:${isToday?600:400};color:${isToday?"#fff":dow===0?"#e57373":dow===6?"#5a8fd4":t.text}`},String(d)));
+    if(hasDiary)cell.appendChild(el("div",{style:`width:4px;height:4px;border-radius:50%;margin-top:1px;background:${isToday?"rgba(255,255,255,.8)":t.accent}`}));
+    cell.onclick=()=>{S.selDate={year:S.viewYear,month:S.viewMonth,day:d};S.editEntry=null;S.editYear=today.getFullYear();S.view="day";render();};
+    cells.appendChild(cell);
+  }
+  grid.appendChild(cells);
+  wrap.appendChild(grid);
+
+  // Banner
+  const banner=div(`margin-top:14px;padding:11px 16px;border-radius:14px;background:${t.soft};display:flex;align-items:center;justify-content:space-between`,[
+    el("span",{style:`font-size:12px;color:${t.accent}`},"💾 데이터는 이 브라우저에 저장돼요"),
+    btn("백업",{style:`background:${t.accent};color:#fff;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:600;flex-shrink:0;margin-left:8px`},exportData)
+  ]);
+  wrap.appendChild(banner);
+  return wrap;
+}
+
+function renderMonthMemo(t){
+  const wrap=el("div",{style:"padding:0 14px"});
+  wrap.appendChild(btn("← 달력으로",{style:`background:${t.soft};border-radius:10px;padding:8px 16px;color:${t.accent};font-size:13px;margin-bottom:14px`},()=>{S.view="calendar";render();}));
+  const card=div(`background:${t.card};border-radius:20px;padding:22px;box-shadow:0 2px 16px rgba(0,0,0,.07)`);
+  card.appendChild(el("div",{style:`font-size:12px;color:${t.sub};margin-bottom:10px`},`${S.viewYear}년 ${S.viewMonth+1}월을 한 문장으로`));
+  const ta=el("textarea",{style:`width:100%;border:1px solid ${t.border};border-radius:14px;padding:14px;font-size:15px;background:${t.bg};color:${t.text};outline:none;line-height:1.8`,rows:5,placeholder:"이달을 표현해보세요..."});
+  ta.value=S.editMemo;
+  ta.oninput=e=>S.editMemo=e.target.value;
+  card.appendChild(ta);
+  const btns=div("display:flex;gap:10px;margin-top:14px",[
+    btn("취소",{style:`flex:1;padding:11px;border-radius:12px;border:1px solid ${t.border};background:none;color:${t.sub};font-size:14px`},()=>{S.view="calendar";render();}),
+    btn("저장",{style:`flex:2;padding:11px;border-radius:12px;background:${t.accent};color:#fff;font-size:14px;font-weight:600`},()=>{
+      S.memos[mk(S.viewYear,S.viewMonth)]=S.editMemo;
+      save();S.view="calendar";render();notify("이달의 한마디 저장됐어요 ✓");
+    })
+  ]);
+  card.appendChild(btns);
+  wrap.appendChild(card);
+  return wrap;
+}
+
+function renderDay(t){
+  const wrap=el("div",{style:"padding:0 14px"});
+  wrap.appendChild(btn("← 달력으로",{style:`background:${t.soft};border-radius:10px;padding:8px 16px;color:${t.accent};font-size:13px;margin-bottom:14px`},()=>{S.view="calendar";S.editEntry=null;render();}));
+  const sd=S.selDate;
+  const de=dayEntries();
+  const dow=DAYS[new Date(sd.year,sd.month,sd.day).getDay()];
+
+  const dc=div(`background:${t.card};border-radius:18px;padding:16px 20px;margin-bottom:14px;box-shadow:0 2px 12px rgba(0,0,0,.06)`);
+  const dtitle=el("div",{style:"font-size:21px;font-weight:600"});
+  dtitle.appendChild(document.createTextNode(`${sd.month+1}월 ${sd.day}일 `));
+  dtitle.appendChild(el("span",{style:`font-size:13px;color:${t.sub}`},`${dow}요일`));
+  dc.appendChild(dtitle);
+  dc.appendChild(el("div",{style:`font-size:12px;color:${t.sub};margin-top:2px`},de.length>0?`${de.length}개의 연도 기록`:"아직 기록이 없어요"));
+  wrap.appendChild(dc);
+
+  if(S.editEntry!==null){
+    const form=div(`background:${t.card};border-radius:20px;padding:20px;margin-bottom:14px;box-shadow:0 2px 16px rgba(0,0,0,.07)`);
+    form.appendChild(el("div",{style:`font-size:11px;color:${t.sub};margin-bottom:8px;letter-spacing:1px`},"연도 선택"));
+    const ys=div("display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px");
+    for(let off=0;off<=5;off++){
+      const y=today.getFullYear()-off;
+      ys.appendChild(btn(`${y}년`,{style:`padding:6px 13px;border-radius:20px;background:${S.editYear===y?t.accent:t.soft};color:${S.editYear===y?"#fff":t.accent};font-size:13px;font-weight:${S.editYear===y?600:400}`},()=>{S.editYear=y;render();}));
+    }
+    form.appendChild(ys);
+
+    form.appendChild(el("div",{style:`font-size:11px;color:${t.sub};margin-bottom:8px;letter-spacing:1px`},"기분"));
+    const ms=div("display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px");
+    MOODS.forEach(m=>{
+      const sel=S.editEntry.mood===m.e;
+      ms.appendChild(btn(m.e,{title:m.l,style:`padding:6px 9px;border-radius:20px;border:${sel?`2px solid ${t.accent}`:`1px solid ${t.border}`};background:${sel?t.soft:"none"};font-size:18px`},()=>{S.editEntry.mood=sel?null:m.e;render();}));
+    });
+    form.appendChild(ms);
+
+    const ta=el("textarea",{style:`width:100%;border:1px solid ${t.border};border-radius:14px;padding:14px;font-size:14px;background:${t.bg};color:${t.text};outline:none;line-height:1.8;margin-bottom:10px`,rows:6,placeholder:`${S.editYear}년 ${sd.month+1}월 ${sd.day}일의 기록...`});
+    ta.value=S.editEntry.text;
+    ta.oninput=e=>S.editEntry.text=e.target.value;
+    form.appendChild(ta);
+
+    const inp=el("input",{type:"text",style:`width:100%;border:1px solid ${t.border};border-radius:10px;padding:9px 14px;font-size:13px;background:${t.bg};color:${t.text};outline:none;margin-bottom:14px`,placeholder:"한줄 메모 (선택)"});
+    inp.value=S.editEntry.memo||"";
+    inp.oninput=e=>S.editEntry.memo=e.target.value;
+    form.appendChild(inp);
+
+    form.appendChild(div("display:flex;gap:10px",[
+      btn("취소",{style:`flex:1;padding:11px;border-radius:12px;border:1px solid ${t.border};background:none;color:${t.sub};font-size:14px`},()=>{S.editEntry=null;render();}),
+      btn("저장",{style:`flex:2;padding:11px;border-radius:12px;background:${t.accent};color:#fff;font-size:14px;font-weight:600`},()=>{
+        const text=S.editEntry.text.trim();
+        if(!text)return;
+        const k=dk(sd.year,sd.month,sd.day);
+        const existing=S.entries[k]||[];
+        const idx=existing.findIndex(e=>e.year===S.editYear);
+        const ne={year:S.editYear,text,mood:S.editEntry.mood||null,memo:S.editEntry.memo||"",createdAt:new Date().toISOString()};
+        S.entries[k]=idx>=0?existing.map((e,i)=>i===idx?ne:e):[...existing,ne].sort((a,b)=>b.year-a.year);
+        save();S.editEntry=null;render();notify("저장됐어요 ✓");
+      })
+    ]));
+    wrap.appendChild(form);
+  } else {
+    wrap.appendChild(btn("✏️  새 일기 쓰기",{style:`width:100%;padding:15px;border-radius:18px;border:2px dashed ${t.border};background:${t.card};color:${t.accent};font-size:15px;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:8px`},()=>{S.editEntry={text:"",mood:null,memo:""};render();}));
+  }
+
+  if(de.length>0){
+    wrap.appendChild(el("div",{style:`font-size:11px;color:${t.sub};margin-bottom:10px;letter-spacing:1px`},"연도별 기록"));
+    de.forEach(entry=>{
+      const card=div(`background:${t.card};border-radius:18px;padding:18px;margin-bottom:12px;box-shadow:0 2px 10px rgba(0,0,0,.05);border-left:4px solid ${t.accent}`);
+      const top=div("display:flex;justify-content:space-between;align-items:center;margin-bottom:10px",[
+        div("display:flex;align-items:center;gap:8px",[
+          el("span",{style:`font-size:17px;font-weight:700;color:${t.accent}`},`${entry.year}년`),
+          entry.mood?el("span",{style:"font-size:20px"},entry.mood):null
+        ]),
+        div("display:flex;gap:6px",[
+          btn("수정",{style:`background:${t.soft};border-radius:8px;padding:4px 10px;font-size:12px;color:${t.accent}`},()=>{S.editYear=entry.year;S.editEntry={text:entry.text,mood:entry.mood,memo:entry.memo||""};render();}),
+          btn("삭제",{style:"background:#fff0f0;border-radius:8px;padding:4px 10px;font-size:12px;color:#e57373"},()=>{
+            const k=dk(sd.year,sd.month,sd.day);
+            S.entries[k]=(S.entries[k]||[]).filter(e=>e.year!==entry.year);
+            save();render();notify("삭제됐어요");
+          })
+        ])
+      ]);
+      card.appendChild(top);
+      if(entry.memo)card.appendChild(el("div",{style:`font-size:12px;color:${t.sub};margin-bottom:8px;font-style:italic`},`📌 ${entry.memo}`));
+      card.appendChild(el("div",{style:`font-size:14px;line-height:1.8;color:${t.text};white-space:pre-wrap`},entry.text));
+      card.appendChild(el("div",{style:`font-size:11px;color:${t.sub};margin-top:10px`},`${sd.year}년 ${sd.month+1}월 ${sd.day}일`));
+      wrap.appendChild(card);
+    });
+  }
+  return wrap;
+}
+
+function renderSettings(t){
+  const wrap=el("div",{style:"padding:0 14px"});
+  wrap.appendChild(btn("← 달력으로",{style:`background:${t.soft};border-radius:10px;padding:8px 16px;color:${t.accent};font-size:13px;margin-bottom:14px`},()=>{S.view="calendar";S.confirmClear=false;render();}));
+  const card=div(`background:${t.card};border-radius:20px;padding:24px;box-shadow:0 2px 16px rgba(0,0,0,.07)`);
+  card.appendChild(el("h3",{style:"font-size:17px;font-weight:600;margin-bottom:20px"},"설정"));
+
+  card.appendChild(el("div",{style:`font-size:11px;color:${t.sub};margin-bottom:10px;letter-spacing:1px`},"테마"));
+  const tgrid=div("display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px");
+  Object.entries(THEMES).forEach(([key,th])=>{
+    const tb=btn("",{style:`padding:12px 8px;border-radius:14px;border:${S.theme===key?`2px solid ${th.accent}`:`2px solid ${th.border}`};background:${th.bg};color:${th.text};font-size:13px;font-weight:${S.theme===key?600:400};display:flex;flex-direction:column;align-items:center;gap:6px`},()=>{S.theme=key;save();render();});
+    tb.appendChild(el("div",{style:`width:24px;height:24px;border-radius:50%;background:${th.accent}`}));
+    tb.appendChild(document.createTextNode(th.name));
+    tgrid.appendChild(tb);
+  });
+  card.appendChild(tgrid);
+
+  card.appendChild(el("div",{style:`font-size:11px;color:${t.sub};margin-bottom:10px;letter-spacing:1px`},"데이터 백업"));
+  const bwrap=div("display:flex;flex-direction:column;gap:8px;margin-bottom:20px");
+  bwrap.appendChild(btn("📦 JSON으로 내보내기 (백업)",{style:`padding:12px;border-radius:12px;background:${t.accent};color:#fff;font-size:14px;font-weight:600`},exportData));
+  const impBtn=btn("📂 JSON에서 불러오기 (복원)",{style:`padding:12px;border-radius:12px;background:${t.soft};color:${t.accent};font-size:14px`},()=>document.getElementById("fileInput").click());
+  bwrap.appendChild(impBtn);
+  const fi=el("input",{type:"file",id:"fileInput",accept:".json",style:"display:none"});
+  fi.onchange=e=>importData(e);
+  bwrap.appendChild(fi);
+  card.appendChild(bwrap);
+
+  card.appendChild(el("div",{style:"font-size:11px;color:#e57373;margin-bottom:8px;letter-spacing:1px"},"위험 구역"));
+  if(S.confirmClear){
+    card.appendChild(div("display:flex;gap:8px",[
+      btn("취소",{style:`flex:1;padding:10px;border-radius:10px;background:${t.soft};color:${t.sub};font-size:13px`},()=>{S.confirmClear=false;render();}),
+      btn("정말 삭제",{style:"flex:1;padding:10px;border-radius:10px;background:#e57373;color:#fff;font-size:13px;font-weight:600"},()=>{S.entries={};S.memos={};save();S.confirmClear=false;S.view="calendar";render();notify("🗑 모든 데이터가 삭제됐어요.");})
+    ]));
+  } else {
+    card.appendChild(btn("🗑 모든 데이터 삭제",{style:"width:100%;padding:10px;border-radius:10px;background:#fff0f0;color:#e57373;font-size:13px"},()=>{S.confirmClear=true;render();}));
+  }
+  wrap.appendChild(card);
+  return wrap;
+}
+
+function exportData(){
+  const data={entries:S.entries,memos:S.memos,theme:S.theme,exportedAt:new Date().toISOString(),version:1};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=`diary-${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}.json`;
+  a.click();URL.revokeObjectURL(url);
+  notify("📦 백업 파일 다운로드됐어요!");
+}
+
+function importData(e){
+  const file=e.target.files?.[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const data=JSON.parse(ev.target.result);
+      if(data.entries)S.entries=data.entries;
+      if(data.memos)S.memos=data.memos;
+      if(data.theme)S.theme=data.theme;
+      save();S.view="calendar";render();notify("✅ 일기를 불러왔어요!");
+    }catch{notify("❌ 파일을 읽을 수 없어요.");}
+  };
+  reader.readAsText(file);
+  e.target.value="";
+}
+
+load();render();
+</script>
+</body>
+</html>
